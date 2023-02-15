@@ -6,10 +6,11 @@ use clap::{arg, Parser};
 use env_logger;
 use futures::future::join_all;
 use tokio;
-use tracing::error;
-
+use tracing::{debug, error, info};
 mod model;
-
+use civitdl::Config;
+use dotenvy;
+use envy;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -19,6 +20,9 @@ struct Args {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
+    env_logger::init();
+    dotenvy::dotenv().unwrap();
+
     let args = Args::parse();
     let mut ids = args.ids;
 
@@ -26,26 +30,49 @@ async fn main() {
         error!("No model ids provided! Exiting ...");
         exit(1)
     } else {
-        println!("Parsed IDs: {ids:?}");
+        info!("Parsed IDs: {ids:?}");
     }
 
-    env_logger::init();
-    let civit = Civit::new();
+    let mut config: Option<Config> = None;
+
+    match envy::from_env::<Config>() {
+        Ok(parsed_config) => {
+            debug!("Parsed config: {:#?}", &parsed_config);
+            config = Some(parsed_config);
+        }
+        Err(e) => {
+            error!(error =? e);
+        }
+    } 
+
+    let civit = Civit::new(config);
     let mut res = Vec::new();
-    let results = join_all(ids.iter_mut().map(|id| async {
-        let civit_client = civit.clone();
-        let model_id = id.clone();
-        println!("Attempting to download model {model_id} ...");
-        let model = civit_client
-            .get_model_details(id.clone())
-            .await
-            .expect(format!("Failed to get model details for {model_id}").as_str());
-        model
-        // TODO: get model details
-        // TODO: download model resources
-    }).collect::<Vec<_>>()).await;
+    let results = join_all(
+        ids.iter_mut()
+            .map(|id| async {
+                let civit_client = civit.clone();
+                let model_id = id.clone();
+                println!("Attempting to download model {model_id} ...");
+                let model = civit_client
+                    .get_model_details(id.clone())
+                    .await
+                    .expect(format!("Failed to get model details for {model_id}").as_str());
+                model
+            })
+            .collect::<Vec<_>>(),
+    )
+    .await;
 
     res.extend(results);
-    
-    println!("Final results: {res:#?}");
+
+    join_all(
+        res.iter()
+            .map(|model| async {
+                let m = model.clone();
+                let civit_client = civit.clone();
+                civit_client.download_latest_resource_for_model(m).await
+            })
+            .collect::<Vec<_>>(),
+    )
+    .await;
 }

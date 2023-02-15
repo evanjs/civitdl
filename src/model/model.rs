@@ -40,7 +40,7 @@ pub struct ModelVersion {
     pub trained_words: Vec<Value>,
     pub base_model: String,
     pub early_access_time_frame: i64,
-    pub description: String,
+    pub description: Option<String>,
     pub files: Vec<File>,
     pub images: Vec<Image>,
     pub download_url: String,
@@ -57,9 +57,9 @@ pub struct File {
     pub type_field: String,
     pub format: String,
     pub pickle_scan_result: String,
-    pub pickle_scan_message: String,
+    pub pickle_scan_message: Option<String>,
     pub virus_scan_result: String,
-    pub scanned_at: String,
+    pub scanned_at: Option<String>,
     pub hashes: Hashes,
     pub download_url: String,
 }
@@ -68,15 +68,15 @@ pub struct File {
 #[serde(rename_all = "camelCase")]
 pub struct Hashes {
     #[serde(rename = "AutoV1")]
-    pub auto_v1: String,
+    pub auto_v1: Option<String>,
     #[serde(rename = "AutoV2")]
-    pub auto_v2: String,
+    pub auto_v2: Option<String>,
     #[serde(rename = "SHA256")]
-    pub sha256: String,
+    pub sha256: Option<String>,
     #[serde(rename = "CRC32")]
-    pub crc32: String,
+    pub crc32: Option<String>,
     #[serde(rename = "BLAKE3")]
-    pub blake3: String,
+    pub blake3: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -87,7 +87,7 @@ pub struct Image {
     pub width: i64,
     pub height: i64,
     pub hash: String,
-    pub meta: Meta,
+    pub meta: Option<Meta>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,7 +96,7 @@ pub struct Meta {
     #[serde(rename = "ENSD")]
     pub ensd: Option<String>,
     #[serde(rename = "Size")]
-    pub size: String,
+    pub size: Option<String>,
     pub seed: i64,
     pub steps: i64,
     pub prompt: String,
@@ -104,19 +104,19 @@ pub struct Meta {
     pub cfg_scale: f64,
     #[serde(rename = "Clip skip")]
     pub clip_skip: Option<String>,
-    pub resources: Vec<Resource>,
+    pub resources: Option<Vec<Resource>>,
     #[serde(rename = "Model hash")]
-    pub model_hash: String,
+    pub model_hash: Option<String>,
     #[serde(rename = "Hires steps")]
     pub hires_steps: Option<String>,
     #[serde(rename = "Hires upscale")]
-    pub hires_upscale: String,
+    pub hires_upscale: Option<String>,
     #[serde(rename = "AddNet Enabled")]
     pub add_net_enabled: Option<String>,
     #[serde(rename = "AddNet Model 1")]
     pub add_net_model_1: Option<String>,
     #[serde(rename = "Hires upscaler")]
-    pub hires_upscaler: String,
+    pub hires_upscaler: Option<String>,
     pub negative_prompt: String,
     #[serde(rename = "AddNet Module 1")]
     pub add_net_module_1: Option<String>,

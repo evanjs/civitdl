@@ -52,7 +52,7 @@ async fn main() {
             .map(|id| async {
                 let civit_client = civit.clone();
                 let model_id = id.clone();
-                println!("Attempting to download model {model_id} ...");
+
                 let model = civit_client
                     .get_model_details(id.clone())
                     .await

@@ -4,15 +4,16 @@ use reqwest;
 use reqwest::{cookie::Jar, Url};
 mod model;
 use anyhow::anyhow;
-use directories;
 use futures::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
 use model::model::Model;
+use model::model_version::ModelVersion;
 use normpath::{self, PathExt};
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use strum;
@@ -20,23 +21,7 @@ use strum::{AsRefStr, EnumString};
 use tracing::{self, instrument};
 use tracing::{debug, info, trace};
 
-use indicatif::{ProgressBar, ProgressStyle};
-
-#[tracing::instrument]
-pub fn get_download_folder_from_model_type(path: PathBuf, model_type: ModelType) -> PathBuf {
-    info!("Attempting to determine download folder for model type: {model_type:?}");
-    let leaf_dir = match model_type {
-        ModelType::Model | ModelType::Checkpoint => "models/Stable-diffusion",
-        ModelType::Lora => "models/Lora",
-        ModelType::TextualInversion => "embeddings",
-        ModelType::Hypernetwork => "models/hypernetwork",
-        ModelType::AestheticGradient => "models/aesthetic_embeddings",
-    };
-    path.join(leaf_dir).normalize().unwrap().into_path_buf()
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(default)]
 pub struct Config {
     api_key: Option<String>,
     stable_diffusion_base_directory: PathBuf,
@@ -55,7 +40,7 @@ fn default_stable_diffusion_fallback_directory() -> PathBuf {
 }
 
 impl Config {
-    #[tracing::instrument]
+    #[tracing::instrument(skip_all)]
     pub fn new(
         api_key: Option<String>,
         token: Option<String>,
@@ -84,13 +69,17 @@ impl Default for Config {
 
 #[derive(AsRefStr, Debug, EnumString)]
 pub enum ModelType {
+    #[strum(serialize = "LORA")]
     Lora,
+    //#[strum(serialize = "model")]
     Model,
+    //#[strum(serialize = "checkpoint")]
     Checkpoint,
-    #[strum(serialize = "Textual Inversion")]
+    //#[strum(serialize = "textual inversion")]
     TextualInversion,
+    //#[strum(serialize = "hypernetwork")]
     Hypernetwork,
-    #[strum(serialize = "Aesthetic Gradient")]
+    //#[strum(serialize = "aesthetic gradient")]
     AestheticGradient,
 }
 
@@ -101,7 +90,7 @@ pub struct Civit {
 }
 
 impl Civit {
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub fn new(maybe_config: Option<Config>) -> Self {
         let jar = Jar::default();
         if let Some(a) = maybe_config.clone() {
@@ -131,7 +120,56 @@ impl Civit {
         }
     }
 
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
+    pub async fn get_download_folder_from_model_version(
+        self,
+        path: PathBuf,
+        model_version: ModelVersion,
+    ) -> anyhow::Result<PathBuf> {
+        trace!(
+            "Attempting to determine download folder for model version: {:?}",
+            model_version.id
+        );
+        let version = self
+            .clone()
+            .get_model_version_details(model_version.id)
+            .await
+            .unwrap();
+        trace!("Model version: {:#?}", version);
+        let model = version.model.unwrap();
+        trace!("Model: {:#?}", model);
+        trace!("Version Type: {:#?}", model.type_field);
+        trace!(
+            "Attempting to resolve type for type_field: {:#?}",
+            model.type_field
+        );
+        let resolved_type = ModelType::from_str(model.type_field.as_str()).unwrap();
+        let resolved_path = self.get_download_folder_from_model_type(path, resolved_type);
+        info!("Resolved path: {:#?}", resolved_path);
+        Ok(resolved_path)
+    }
+
+    #[tracing::instrument(level = "trace")]
+    pub fn get_download_folder_from_model_type(
+        &self,
+        path: PathBuf,
+        model_type: ModelType,
+    ) -> PathBuf {
+        debug!("Attempting to determine download folder for model type: {model_type:?}");
+        let leaf_dir = match model_type {
+            ModelType::Model | ModelType::Checkpoint => "models/Stable-diffusion",
+            ModelType::Lora => "models/Lora",
+            ModelType::TextualInversion => "embeddings",
+            ModelType::Hypernetwork => "models/hypernetworks",
+            ModelType::AestheticGradient => "models/aesthetic_embeddings",
+        };
+        trace!("Leaf dir: {:#?}", leaf_dir);
+        let final_path = path.join(leaf_dir).normalize().unwrap().into_path_buf();
+        trace!("Path buf: {:#?}", final_path);
+        final_path
+    }
+
+    #[tracing::instrument(level = "trace")]
     pub async fn get_model_details(self, model_id: String) -> Result<Model, anyhow::Error> {
         let url = format!("{MAIN_API_URL}/models/{model_id}");
         match self
@@ -148,20 +186,55 @@ impl Civit {
         }
     }
 
-    #[tracing::instrument(level = "debug")]
-    pub async fn download_latest_resource_for_model(self, model: Model) -> anyhow::Result<String> {
-        let first = model.model_versions.first().unwrap();
-        let files = first.files.first().unwrap();
-        let f = ModelType::from_str(files.type_field.as_str()).unwrap();
-        println!("Attempting to download {model:?} ...");
-        self.download_file(&first.download_url, f).await
+    #[tracing::instrument(level = "trace")]
+    pub async fn get_model_version_details(
+        self,
+        model_version_id: i64,
+    ) -> Result<ModelVersion, anyhow::Error> {
+        let url = format!("{MAIN_API_URL}/model-versions/{model_version_id}");
+        debug!("URL: {:#?}", url);
+        match self
+            .client
+            .get(&url)
+            .send()
+            .await?
+            .json::<ModelVersion>()
+            .await
+            .inspect_err(|e| debug!("Failed to parse JSON from URL: {url}. Error: {e}"))
+        {
+            Ok(o) => Ok(o),
+            Err(e) => Err(anyhow!(e)),
+        }
     }
 
-    #[tracing::instrument(level = "debug")]
-    pub async fn download_file(self, url: &str, model_type: ModelType) -> anyhow::Result<String> {
-        trace!("Client: {:#?}", self.client);
-        let path = self.config.clone().unwrap().stable_diffusion_base_directory;
-        let model_directory = get_download_folder_from_model_type(path.clone(), model_type);
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn download_latest_resource_for_model(self, model: Model) -> anyhow::Result<String> {
+        //
+        let first = model
+            .clone()
+            .model_versions
+            .first()
+            .unwrap()
+            .to_owned()
+            .clone();
+        println!("Attempting to download {model:?} ...");
+
+        self.clone().download_file(&first).await
+    }
+
+    #[tracing::instrument(level = "trace")]
+    pub async fn download_file(self, model_version: &ModelVersion) -> anyhow::Result<String> {
+        let path = &self
+            .config
+            .clone()
+            .unwrap()
+            .stable_diffusion_base_directory
+            .clone();
+        let url = &model_version.clone().download_url.clone();
+        let model_directory = self
+            .clone()
+            .get_download_folder_from_model_version(path.clone(), model_version.clone())
+            .await?;
         let result = self
             .client
             .get(url)
@@ -196,7 +269,7 @@ impl Civit {
                 "{:?} already exists! Not downloading...",
                 final_path.to_string_lossy()
             );
-            info!(message);
+            println!("{}", message);
             return Err(anyhow!(message));
         }
 

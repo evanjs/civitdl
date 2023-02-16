@@ -13,12 +13,12 @@ use serde::{Deserialize, Serialize};
 use std::cmp::min;
 use std::fs::File;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 use strum;
 use strum::{AsRefStr, EnumString};
-use tracing::{self, instrument};
+use tracing::{self};
 use tracing::{debug, info, trace};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -4,7 +4,7 @@ use reqwest;
 use reqwest::{cookie::Jar, Url};
 mod model;
 use anyhow::anyhow;
-use futures::StreamExt;
+use futures::{future::join_all, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use model::model::Model;
 use model::model_version::ModelVersion;
@@ -208,18 +208,30 @@ impl Civit {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn download_latest_resource_for_model(self, model: Model) -> anyhow::Result<String> {
-        //
-        let first = model
-            .clone()
-            .model_versions
-            .first()
-            .unwrap()
-            .to_owned()
-            .clone();
-        println!("Attempting to download {model:?} ...");
+    pub async fn download_latest_resource_for_model(self, model: Model, all: bool) -> anyhow::Result<String> {
+        let versions = model.clone().model_versions;
+        match all {
+            false => {
+                let first = versions
+                    .first()
+                    .unwrap()
+                    .to_owned()
+                    .clone();
+                println!("Attempting to download {model:?} ...");
 
-        self.clone().download_file(&first).await
+                self.clone().download_file(&first).await
+            },
+            true => {
+                join_all(
+                    versions.iter()
+                    .map(|v| async {
+                      println!("Attempting to download version {:?} for {model:?} ...", v.id);
+                      self.clone().download_file(v).await
+                    }).collect::<Vec<_>>()
+                ).await;
+                Ok("".to_string())
+            }
+        }
     }
 
     #[tracing::instrument(level = "trace")]

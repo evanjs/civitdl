@@ -14,8 +14,11 @@ use envy;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long)]
+    #[arg(short, long, long_help = "The IDs of the models to download")]
     ids: Vec<String>,
+
+    #[arg(short, long, long_help = "Whether to download all available versions/resources of the specified models")]
+    all: bool
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
@@ -45,6 +48,8 @@ async fn main() {
         }
     } 
 
+    let all = args.all;
+
     let civit = Civit::new(config);
     let mut res = Vec::new();
     let results = join_all(
@@ -70,7 +75,7 @@ async fn main() {
             .map(|model| async {
                 let m = model.clone();
                 let civit_client = civit.clone();
-                civit_client.download_latest_resource_for_model(m).await
+                civit_client.download_latest_resource_for_model(m, all).await
             })
             .collect::<Vec<_>>(),
     )

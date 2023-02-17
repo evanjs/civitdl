@@ -1,6 +1,5 @@
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
-use serde_json::Value;
 use std::fmt;
 
 use crate::model::model_version::ModelVersion;
@@ -29,16 +28,6 @@ pub struct Model {
 pub struct Creator {
     pub username: Option<String>,
     pub image: Option<String>,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Resource {
-    pub hash: Option<String>,
-    pub name: Option<String>,
-    #[serde(rename = "type")]
-    pub type_field: String,
-    pub weight: Option<Value>,
 }
 
 impl fmt::Debug for Model {

@@ -1,6 +1,4 @@
 use serde_derive::{Serialize, Deserialize};
-use serde_json::Value;
-use crate::model::model::Resource;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -8,8 +6,8 @@ pub struct Model {
     pub name: String,
     #[serde(rename = "type")]
     pub type_field: String,
-    pub nsfw: bool,
-    pub poi: bool,
+    pub nsfw: Option<bool>,
+    pub poi: Option<bool>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -18,14 +16,14 @@ pub struct ModelVersion {
     pub id: i64,
     pub model_id: i64,
     pub name: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub trained_words: Vec<Value>,
-    pub base_model: String,
-    pub early_access_time_frame: i64,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub trained_words: Vec<String>,
+    pub base_model: Option<String>,
+    pub early_access_time_frame: Option<i64>,
     pub description: Option<String>,
-    pub files: Vec<File>,
-    pub images: Vec<Image>,
+    pub files: Option<Vec<File>>,
+    pub images: Option<Vec<Image>>,
     pub model: Option<Model>,
     pub download_url: String,
 }
@@ -36,15 +34,15 @@ pub struct File {
     pub name: String,
     pub id: i64,
     #[serde(rename = "sizeKB")]
-    pub size_kb: f64,
+    pub size_kb: Option<f64>,
     #[serde(rename = "type")]
     pub type_field: String,
-    pub format: String,
-    pub pickle_scan_result: String,
+    pub format: Option<String>,
+    pub pickle_scan_result: Option<String>,
     pub pickle_scan_message: Option<String>,
-    pub virus_scan_result: String,
+    pub virus_scan_result: Option<String>,
     pub scanned_at: Option<String>,
-    pub hashes: Hashes,
+    pub hashes: Option<Hashes>,
     pub download_url: String,
 }
 
@@ -70,8 +68,10 @@ pub struct Image {
     pub nsfw: bool,
     pub width: i64,
     pub height: i64,
-    pub hash: String,
+    pub hash: Option<String>,
     pub meta: Option<Meta>,
+    pub generation_process: Option<String>,
+    pub tags: Option<Vec<Option<String>>>
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -81,11 +81,11 @@ pub struct Meta {
     pub ensd: Option<String>,
     #[serde(rename = "Size")]
     pub size: Option<String>,
-    pub seed: i64,
-    pub steps: i64,
-    pub prompt: String,
-    pub sampler: String,
-    pub cfg_scale: f64,
+    pub seed: Option<i64>,
+    pub steps: Option<i64>,
+    pub prompt: Option<String>,
+    pub sampler: Option<String>,
+    pub cfg_scale: Option<f64>,
     #[serde(rename = "Clip skip")]
     pub clip_skip: Option<String>,
     pub resources: Option<Vec<Resource>>,
@@ -112,3 +112,11 @@ pub struct Meta {
     pub denoising_strength: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Resource {
+    pub hash: Option<String>,
+    pub name: Option<String>,
+    #[serde(rename = "type")]
+    pub resource_type: Option<String>,
+    pub weight: Option<f64>,
+}

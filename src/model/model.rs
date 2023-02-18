@@ -1,5 +1,6 @@
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
+use serde_json;
 use std::fmt;
 
 use crate::model::model_version::ModelVersion;
@@ -19,7 +20,7 @@ pub struct Model {
     pub allow_derivatives: Option<bool>,
     pub allow_different_license: Option<bool>,
     pub creator: Option<Creator>,
-    pub tags: Option<Vec<String>>,
+    pub tags: Option<Vec<serde_json::Value>>,
     pub model_versions: Vec<ModelVersion>,
 }
 

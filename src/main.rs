@@ -2,7 +2,7 @@ use std::process::exit;
 
 use civitdl::Civit;
 use clap;
-use clap::{arg, Parser};
+use clap::{arg, Parser, ArgAction};
 use env_logger;
 use futures::future::join_all;
 use tokio;
@@ -11,10 +11,11 @@ mod model;
 use civitdl::Config;
 use dotenvy;
 use envy;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long, long_help = "The IDs of the models to download")]
+    #[arg(short, long, long_help = "The IDs of the models to download", action=ArgAction::Set, num_args=1..)]
     ids: Vec<String>,
 
     #[arg(short, long, long_help = "Whether to download all available versions/resources of the specified models")]

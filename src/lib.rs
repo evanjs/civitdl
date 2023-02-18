@@ -5,7 +5,7 @@ use reqwest::{cookie::Jar, Url};
 mod model;
 use anyhow::anyhow;
 use futures::{future::join_all, StreamExt};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use model::model::Model;
 use model::model_version::ModelVersion;
 use normpath::{self, PathExt};
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::min;
 use std::fs::File;
 use std::io::Write;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum;
@@ -87,6 +87,7 @@ pub enum ModelType {
 pub struct Civit {
     pub client: reqwest::Client,
     pub config: Option<Config>,
+    pub multi_progress: MultiProgress,
 }
 
 impl Civit {
@@ -114,9 +115,12 @@ impl Civit {
             .unwrap();
         debug!("Constructed client: {:#?}", client);
 
+        let multi_progress = MultiProgress::new();
+
         Civit {
             client,
             config: maybe_config.or(None),
+            multi_progress,
         }
     }
 
@@ -134,19 +138,24 @@ impl Civit {
             .clone()
             .get_model_version_details(model_version.id)
             .await
-            .unwrap();
-        trace!("Model version: {:#?}", version);
-        let model = version.model.unwrap();
-        trace!("Model: {:#?}", model);
-        trace!("Version Type: {:#?}", model.type_field);
-        trace!(
-            "Attempting to resolve type for type_field: {:#?}",
-            model.type_field
-        );
-        let resolved_type = ModelType::from_str(model.type_field.as_str()).unwrap();
-        let resolved_path = self.get_download_folder_from_model_type(path, resolved_type);
-        info!("Resolved path: {:#?}", resolved_path);
-        Ok(resolved_path)
+            .or(Err(anyhow!("Failed to resolve model version {}", model_version.id)));
+        match version {
+            Ok(v) => {
+                trace!("Model version: {:#?}", v);
+                let model = v.model.unwrap();
+                trace!("Model: {:#?}", model);
+                trace!("Version Type: {:#?}", model.type_field);
+                trace!(
+                    "Attempting to resolve type for type_field: {:#?}",
+                    model.type_field
+                );
+                let resolved_type = ModelType::from_str(model.type_field.as_str()).unwrap();
+                let resolved_path = self.get_download_folder_from_model_type(path, resolved_type);
+                info!("Resolved path: {:#?}", resolved_path);
+                Ok(resolved_path)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     #[tracing::instrument(level = "trace")]
@@ -208,34 +217,38 @@ impl Civit {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn download_latest_resource_for_model(self, model: Model, all: bool) -> anyhow::Result<String> {
+    pub async fn download_latest_resource_for_model(
+        self,
+        model: Model,
+        all: bool,
+    ) -> anyhow::Result<()> {
         let versions = model.clone().model_versions;
         match all {
             false => {
-                let first = versions
-                    .first()
-                    .unwrap()
-                    .to_owned()
-                    .clone();
-                println!("Attempting to download {model:?} ...");
-
-                self.clone().download_file(&first).await
-            },
+                let first = versions.first().unwrap().to_owned().clone();
+                self.clone().download_file(&first, model.clone()).await
+            }
             true => {
                 join_all(
-                    versions.iter()
-                    .map(|v| async {
-                      println!("Attempting to download version {:?} for {model:?} ...", v.id);
-                      self.clone().download_file(v).await
-                    }).collect::<Vec<_>>()
-                ).await;
-                Ok("".to_string())
+                    versions
+                        .iter()
+                        .map(|v| async {
+                            println!(
+                                "Attempting to download version {:?} for {model:?} ...",
+                                v.id
+                            );
+                            self.clone().download_file(v, model.clone()).await
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .await;
+                Ok(())
             }
         }
     }
 
     #[tracing::instrument(level = "trace")]
-    pub async fn download_file(self, model_version: &ModelVersion) -> anyhow::Result<String> {
+    pub async fn download_file(self, model_version: &ModelVersion, model: Model) -> anyhow::Result<()> {
         let path = &self
             .config
             .clone()
@@ -273,7 +286,7 @@ impl Civit {
             .replace('"', "");
         trace!("Content Disposition for {:?}: {:?}", &url, &filename);
 
-        let final_path = model_directory.join(filename);
+        let final_path = model_directory.join(&filename);
         debug!("Final path: {}", final_path.to_string_lossy());
 
         if final_path.exists() {
@@ -289,10 +302,17 @@ impl Civit {
             .content_length()
             .ok_or(anyhow!("Failed to get content length from '{}'", &url))?;
 
-        let pb = ProgressBar::new(total_size);
-        pb.set_style(ProgressStyle::default_bar()
-            .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
-            .progress_chars("#>-"));
+        let pb = self.multi_progress.add(ProgressBar::new(total_size)
+            .with_prefix(filename)
+            .with_message(format!("Attempting to download version {} for {model:?} ...", model_version.id))
+            .with_style(ProgressStyle::default_bar()
+            .template("{msg}\n{spinner:.green} [{prefix}] [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
+            .progress_chars("#>-")))
+            .with_finish(indicatif::ProgressFinish::WithMessage(format!(
+                "Downloaded {} to {}",
+                url,
+                final_path.to_string_lossy()
+            ).into()));
 
         // download chunks
         let mut file = File::create(&final_path).or(Err(anyhow!(
@@ -303,7 +323,7 @@ impl Civit {
         let mut stream = result.bytes_stream();
 
         while let Some(item) = stream.next().await {
-            let chunk = item.or(Err(anyhow!("")))?;
+            let chunk = item.or(Err(anyhow!("Failed to read chunk from stream")))?;
             file.write_all(&chunk)
                 .or(Err(anyhow!("Error while writing to file")))?;
             let new = min(downloaded + (chunk.len() as u64), total_size);
@@ -311,12 +331,7 @@ impl Civit {
             pb.set_position(new)
         }
 
-        pb.finish_with_message(format!(
-            "Downloaded {} to {}",
-            url,
-            final_path.to_string_lossy()
-        ));
-        Ok("".to_string())
+        Ok(())
     }
 }
 

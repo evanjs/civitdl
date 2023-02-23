@@ -1,13 +1,13 @@
 #![feature(result_option_inspect)]
 #![feature(const_option)]
 #![feature(unwrap_infallible)]
-use reqwest;
+
 use reqwest::{cookie::Jar, Url};
 mod model;
 use anyhow::anyhow;
 use futures::{future::join_all, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use model::model::Model;
+use model::Model;
 use model::model_version::ModelVersion;
 use model::model_version::ResourceFile;
 use normpath::{self, PathExt};
@@ -59,8 +59,8 @@ fn default_stable_diffusion_fallback_directory() -> PathBuf {
     downloads_directory
         .unwrap()
         .to_path_buf()
-        .join("Stable-diffusion".to_string())
-        .to_path_buf()
+        .join("Stable-diffusion")
+        
 }
 
 impl Config {
@@ -127,12 +127,12 @@ impl Civit {
         if let Some(a) = maybe_config.clone() {
             if let Some(t) = a.token {
                 let url = "https://civitai.com".parse::<Url>().unwrap();
-                let token = format!("__Secure-civitai-token={};", t).to_string();
+                let token = format!("__Secure-civitai-token={};", t);
                 let cookie = format!(
                     "{} Domain=.civitai.com; Path=/; HttpOnly; Secure; SameSite=Lax",
-                    token.clone()
+                    token
                 )
-                .to_string();
+                ;
                 jar.add_cookie_str(cookie.as_str(), &url);
                 trace!("Added cookie {} to jar", cookie);
             }
@@ -179,9 +179,9 @@ impl Civit {
                     let found_model_format = ModelFormat::from_str(v.format.clone().unwrap().as_str()).ok();
                     let found_resource_type = ResourceType::from_str(&v.type_field).ok();
                     debug!("Found {:?} model of format {:?}", &found_resource_type, &found_model_format);
-                    let okay = preferred_model_format.eq(&found_model_format.clone()) && preferred_resource_type.eq(&found_resource_type);
-                    trace!("Need to ensure {:?} is equal to {:?}", preferred_model_format, &found_model_format.clone());
-                    trace!("Need to ensure {:?} is equal to {:?}", preferred_resource_type, &found_resource_type.clone());
+                    let okay = preferred_model_format.eq(&found_model_format) && preferred_resource_type.eq(&found_resource_type);
+                    trace!("Need to ensure {:?} is equal to {:?}", preferred_model_format, &found_model_format);
+                    trace!("Need to ensure {:?} is equal to {:?}", preferred_resource_type, &found_resource_type);
                     debug!("Is {:?} okay? ({:?})({:?}) -- {} ", &v.id, &found_model_format, &found_resource_type, okay);
                     okay
                 })
@@ -189,7 +189,7 @@ impl Civit {
         } else {
             let first = model_version.files.expect("yo wtf").first().cloned();
             match first {
-                Some(s) => Ok(Some(s.to_owned())),
+                Some(s) => Ok(Some(s)),
                 None => Err(anyhow!("Failed to get first model thing")),
             }
         }
@@ -349,7 +349,7 @@ impl Civit {
                 model.id.to_string()
             )));
         match target {
-            Ok(t) => self.clone().download_file(&t, model.clone()).await,
+            Ok(t) => self.clone().download_file(t, model.clone()).await,
             Err(e) => e,
         }
     }
@@ -460,4 +460,4 @@ impl Civit {
     }
 }
 
-const MAIN_API_URL: &'static str = &"https://civitai.com/api/v1";
+const MAIN_API_URL: &str = "https://civitai.com/api/v1";

@@ -1,16 +1,16 @@
 use std::process::exit;
 
 use civitdl::Civit;
-use clap;
+
 use clap::{arg, ArgAction, Parser};
-use env_logger;
+
 use futures::future::join_all;
-use tokio;
+
 use tracing::{debug, error, info};
 mod model;
 use civitdl::Config;
-use dotenvy;
-use envy;
+
+
 use env_logger::Env;
 
 #[derive(Parser, Debug)]
@@ -39,7 +39,7 @@ async fn main() {
     let args = Args::parse();
     let mut ids = args.ids;
 
-    if ids.len() == 0 {
+    if ids.is_empty() {
         error!("No model ids provided! Exiting ...");
         exit(1)
     } else {
@@ -74,7 +74,7 @@ async fn main() {
             .clone()
             .get_model_details(id.clone())
             .await
-            .expect(format!("Failed to get model details for {model_id}").as_str());
+            .unwrap_or_else(|_| panic!("Failed to get model details for {model_id}"));
 
         civit_client
             .download_specific_resource_for_model(model, oid)
@@ -86,11 +86,11 @@ async fn main() {
                     let civit_client = civit.clone();
                     let model_id = id.clone();
 
-                    let model = civit_client
+                    
+                    civit_client
                         .get_model_details(id.clone())
                         .await
-                        .expect(format!("Failed to get model details for {model_id}").as_str());
-                    model
+                        .unwrap_or_else(|_| panic!("Failed to get model details for {model_id}"))
                 })
                 .collect::<Vec<_>>(),
         )

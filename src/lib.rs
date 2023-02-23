@@ -1,5 +1,6 @@
 #![feature(result_option_inspect)]
 #![feature(const_option)]
+#![feature(unwrap_infallible)]
 use reqwest;
 use reqwest::{cookie::Jar, Url};
 mod model;
@@ -8,6 +9,7 @@ use futures::{future::join_all, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use model::model::Model;
 use model::model_version::ModelVersion;
+use model::model_version::ResourceFile;
 use normpath::{self, PathExt};
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
@@ -16,10 +18,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use strum;
 use strum::{AsRefStr, EnumString};
-use tracing::{self};
-use tracing::{debug, info, trace};
+use tracing::{debug, trace, warn};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
@@ -27,6 +27,30 @@ pub struct Config {
     stable_diffusion_base_directory: PathBuf,
     stable_diffusion_fallback_directory: PathBuf,
     token: Option<String>,
+    model_format: Option<ModelFormat>,
+    resource_type: Option<ResourceType>
+}
+
+
+#[derive(AsRefStr, Debug, Serialize, Deserialize, Clone, EnumString, PartialEq)]
+pub enum ResourceType {
+    Model,
+    #[strum(serialize = "Pruned Model")]
+    PrunedModel
+}
+
+#[derive(AsRefStr, Debug, Serialize, Deserialize, Clone, EnumString, PartialEq)]
+pub enum ModelFormat {
+    SafeTensor,
+    PickleTensor
+}
+
+fn default_model_format() -> Option<ModelFormat> {
+    Some(ModelFormat::SafeTensor)
+}
+
+fn default_resource_type() -> Option<ResourceType> {
+    Some(ResourceType::PrunedModel)
 }
 
 fn default_stable_diffusion_fallback_directory() -> PathBuf {
@@ -46,12 +70,16 @@ impl Config {
         token: Option<String>,
         stable_diffusion_base_directory: &str,
         stable_diffusion_fallback_directory: &str,
+        model_format: &str,
+        resource_type: &str
     ) -> Self {
         Self {
             api_key,
             token,
             stable_diffusion_base_directory: PathBuf::from(stable_diffusion_base_directory),
             stable_diffusion_fallback_directory: PathBuf::from(stable_diffusion_fallback_directory),
+            model_format: ModelFormat::from_str(model_format).ok(),
+            resource_type: ResourceType::from_str(resource_type).ok()
         }
     }
 }
@@ -63,6 +91,8 @@ impl Default for Config {
             token: None,
             stable_diffusion_fallback_directory: default_stable_diffusion_fallback_directory(),
             stable_diffusion_base_directory: default_stable_diffusion_fallback_directory(),
+            model_format: default_model_format(),
+            resource_type: default_resource_type()
         }
     }
 }
@@ -124,6 +154,47 @@ impl Civit {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn get_optimal_file_from_preferred_model_format(
+        self,
+        model_version: ModelVersion,
+    ) -> Result<Option<ResourceFile>, anyhow::Error> {
+        debug!(
+            "Attempting to get optimal file from model version {}",
+            &model_version.id
+        );
+        if let Some(vs) = model_version.files {
+            let preferred_model_format = Some(ModelFormat::SafeTensor);
+            trace!("Preferred model format: {:?}", &preferred_model_format);
+            
+            let preferred_resource_type = Some(ResourceType::PrunedModel);
+            trace!("Preferred resource type: {:?}", &preferred_resource_type);
+
+            // TODO: Fix model format and resource type config parsing so these overrides are not
+            // required
+            Ok(vs
+                .iter()
+                .filter(|v| v.format.is_some())
+                .find(|v| {
+                    let found_model_format = ModelFormat::from_str(v.format.clone().unwrap().as_str()).ok();
+                    let found_resource_type = ResourceType::from_str(&v.type_field).ok();
+                    debug!("Found {:?} model of format {:?}", &found_resource_type, &found_model_format);
+                    let okay = preferred_model_format.eq(&found_model_format.clone()) && preferred_resource_type.eq(&found_resource_type);
+                    trace!("Need to ensure {:?} is equal to {:?}", preferred_model_format, &found_model_format.clone());
+                    trace!("Need to ensure {:?} is equal to {:?}", preferred_resource_type, &found_resource_type.clone());
+                    debug!("Is {:?} okay? ({:?})({:?}) -- {} ", &v.id, &found_model_format, &found_resource_type, okay);
+                    okay
+                })
+                .cloned())
+        } else {
+            let first = model_version.files.expect("yo wtf").first().cloned();
+            match first {
+                Some(s) => Ok(Some(s.to_owned())),
+                None => Err(anyhow!("Failed to get first model thing")),
+            }
+        }
+    }
+
     #[tracing::instrument(level = "trace")]
     pub async fn get_download_folder_from_model_version(
         self,
@@ -138,7 +209,10 @@ impl Civit {
             .clone()
             .get_model_version_details(model_version.id)
             .await
-            .or(Err(anyhow!("Failed to resolve model version {}", model_version.id)));
+            .or(Err(anyhow!(
+                "Failed to resolve model version {}",
+                model_version.id
+            )));
         match version {
             Ok(v) => {
                 trace!("Model version: {:#?}", v);
@@ -151,7 +225,7 @@ impl Civit {
                 );
                 let resolved_type = ModelType::from_str(model.type_field.as_str()).unwrap();
                 let resolved_path = self.get_download_folder_from_model_type(path, resolved_type);
-                info!("Resolved path: {:#?}", resolved_path);
+                debug!("Resolved path: {:#?}", resolved_path);
                 Ok(resolved_path)
             }
             Err(e) => Err(e),
@@ -233,10 +307,6 @@ impl Civit {
                     versions
                         .iter()
                         .map(|v| async {
-                            println!(
-                                "Attempting to download version {:?} for {model:?} ...",
-                                v.id
-                            );
                             self.clone().download_file(v, model.clone()).await
                         })
                         .collect::<Vec<_>>(),
@@ -247,22 +317,74 @@ impl Civit {
         }
     }
 
-    #[tracing::instrument(level = "trace")]
-    pub async fn download_file(self, model_version: &ModelVersion, model: Model) -> anyhow::Result<()> {
+    pub async fn check_if_file_exists_and_matches_hash(self, path: PathBuf, file: ResourceFile) -> anyhow::Result<bool> {
+
+        let file_exists = path.exists();
+        if !file_exists {
+            return Ok(false);
+        }
+
+        let size1 = file.size_kb.unwrap();
+        let size2 = path.metadata().unwrap().len() as f64 / 1024.0;
+        debug!("Checking sizes {} and {}...", &size1, &size2);
+
+        let same = file_exists && size1.eq(&size2);
+        debug!("Same: {}", &same);
+        Ok(same)
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn download_specific_resource_for_model(
+        self,
+        model: Model,
+        oid: String,
+    ) -> anyhow::Result<()> {
+        let versions = model.clone().model_versions;
+        let target = versions
+            .iter()
+            .find(|version| version.id.to_string().eq(&oid))
+            .ok_or(Err(anyhow!(
+                "Failed to find model version {} for model {}",
+                oid,
+                model.id.to_string()
+            )));
+        match target {
+            Ok(t) => self.clone().download_file(&t, model.clone()).await,
+            Err(e) => e,
+        }
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn download_file(
+        self,
+        model_version: &ModelVersion,
+        model: Model,
+    ) -> anyhow::Result<()> {
         let path = &self
             .config
             .clone()
             .unwrap()
             .stable_diffusion_base_directory
             .clone();
-        let url = &model_version.clone().download_url.clone();
+
+        let alt = model_version.clone().files.unwrap().first().unwrap().clone();
+        let target_file = self
+            .clone()
+            .get_optimal_file_from_preferred_model_format(model_version.clone())
+            .await?
+            .unwrap_or(alt);
+        trace!("Target file: {:?}", &target_file);
+
+        let url = &target_file.download_url.clone();
+        trace!("URL: {}", &url);
+
         let model_directory = self
             .clone()
             .get_download_folder_from_model_version(path.clone(), model_version.clone())
             .await?;
         let result = self
             .client
-            .get(url)
+            .get(url.clone())
             .send()
             .await
             .or(Err(anyhow!("Failed to GET from '{}'", &url)))?;
@@ -289,12 +411,13 @@ impl Civit {
         let final_path = model_directory.join(&filename);
         debug!("Final path: {}", final_path.to_string_lossy());
 
-        if final_path.exists() {
+        let same = self.clone().check_if_file_exists_and_matches_hash(final_path.clone(), target_file.clone()).await?;
+        if same {
             let message = format!(
                 "{:?} already exists! Not downloading...",
                 final_path.to_string_lossy()
             );
-            println!("{}", message);
+            warn!("{}", message);
             return Err(anyhow!(message));
         }
 
@@ -304,14 +427,16 @@ impl Civit {
 
         let pb = self.multi_progress.add(ProgressBar::new(total_size)
             .with_prefix(filename)
-            .with_message(format!("Attempting to download version {} for {model:?} ...", model_version.id))
+            .with_message(format!("Attempting to download version {} for {model:?} (format: {}/{}) ...", model_version.id, target_file.type_field.clone(), target_file.format.clone().unwrap_or("N/A".into())))
             .with_style(ProgressStyle::default_bar()
-            .template("{msg}\n{spinner:.green} [{prefix}] [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
-            .progress_chars("#>-")))
+                .template("{msg}\n{spinner:.green} [{prefix}] [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
+                .progress_chars("#>-")))
             .with_finish(indicatif::ProgressFinish::WithMessage(format!(
-                "Downloaded {} to {}",
-                url,
-                final_path.to_string_lossy()
+                        "Downloaded {} ({}/{}) to {}",
+                        url,
+                        target_file.type_field.clone(),
+                        target_file.format.unwrap(),
+                        final_path.to_string_lossy()
             ).into()));
 
         // download chunks

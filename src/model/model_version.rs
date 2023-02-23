@@ -23,7 +23,7 @@ pub struct ModelVersion {
     pub base_model: Option<String>,
     pub early_access_time_frame: Option<i64>,
     pub description: Option<String>,
-    pub files: Option<Vec<File>>,
+    pub files: Option<Vec<ResourceFile>>,
     pub images: Option<Vec<Image>>,
     pub model: Option<Model>,
     pub download_url: String,
@@ -31,7 +31,7 @@ pub struct ModelVersion {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct File {
+pub struct ResourceFile {
     pub name: String,
     pub id: i64,
     #[serde(rename = "sizeKB")]

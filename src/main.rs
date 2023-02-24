@@ -7,7 +7,7 @@ use clap::{arg, ArgAction, Parser};
 use dotenvy::dotenv;
 use futures::future::join_all;
 
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace, warn};
 mod model;
 use civitdl::Config;
 
@@ -62,8 +62,18 @@ async fn main() {
             Some(parsed_config)
         }
         Err(e) => {
-            error!(message = "No config found. Using default options ...", error =? e);
-            let conf = Config::default();
+            warn!(message = "Failed to parse full config. Filling in missing values with defaults ...", error =? e);
+            let model_format = &dotenvy::var("model_format").unwrap_or_default();
+            let resource_type = &dotenvy::var("resource_type").unwrap_or_default();
+            let stable_diffusion_base_directory = &dotenvy::var("stable_diffusion_base_directory").unwrap_or_default();
+            let stable_diffusion_fallback_directory = &dotenvy::var("stable_diffusion_fallback_directory").unwrap_or_default(); 
+            let api_key = dotenvy::var("api_key").ok();
+            let token = dotenvy::var("token").ok();
+            
+            trace!(model_format =? &model_format, resource_type =? &resource_type, stable_diffusion_base_directory =? &stable_diffusion_base_directory, stable_diffusion_fallback_directory =? &stable_diffusion_fallback_directory, api_key =? &api_key, token =? &token);
+            
+            let conf = Config::new(api_key, token, &stable_diffusion_base_directory, &stable_diffusion_fallback_directory, model_format, resource_type);
+
             debug!(config =? &conf);
             Some(conf)
         }

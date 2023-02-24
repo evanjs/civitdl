@@ -27,8 +27,8 @@ pub struct Config {
     stable_diffusion_base_directory: PathBuf,
     stable_diffusion_fallback_directory: PathBuf,
     token: Option<String>,
-    model_format: Option<ModelFormat>,
-    resource_type: Option<ResourceType>
+    model_format: ModelFormat,
+    resource_type: ResourceType
 }
 
 
@@ -45,13 +45,18 @@ pub enum ModelFormat {
     PickleTensor
 }
 
-fn default_model_format() -> Option<ModelFormat> {
-    Some(ModelFormat::SafeTensor)
+impl Default for ModelFormat {
+    fn default () -> ModelFormat {
+        ModelFormat::SafeTensor
+    }
 }
 
-fn default_resource_type() -> Option<ResourceType> {
-    Some(ResourceType::PrunedModel)
+impl Default for ResourceType {
+    fn default() -> ResourceType {
+        ResourceType::PrunedModel
+    }
 }
+
 
 fn default_stable_diffusion_fallback_directory() -> PathBuf {
     let user_dirs = directories::UserDirs::new().unwrap();
@@ -100,8 +105,8 @@ impl Config {
             token,
             stable_diffusion_base_directory: PathBuf::from(stable_diffusion_base_directory),
             stable_diffusion_fallback_directory: PathBuf::from(stable_diffusion_fallback_directory),
-            model_format: ModelFormat::from_str(model_format).ok(),
-            resource_type: ResourceType::from_str(resource_type).ok()
+            model_format: ModelFormat::from_str(model_format).unwrap_or_default(),
+            resource_type: ResourceType::from_str(resource_type).unwrap_or_default()
         }
     }
 }
@@ -113,8 +118,8 @@ impl Default for Config {
             token: None,
             stable_diffusion_fallback_directory: default_stable_diffusion_fallback_directory(),
             stable_diffusion_base_directory: default_stable_diffusion_fallback_directory(),
-            model_format: default_model_format(),
-            resource_type: default_resource_type()
+            model_format: ModelFormat::default(),
+            resource_type: ResourceType::default()
         }
     }
 }
@@ -186,22 +191,21 @@ impl Civit {
             &model_version.id
         );
         if let Some(vs) = model_version.files {
-            let preferred_model_format = Some(ModelFormat::SafeTensor);
+            tracing::info!(config =? &self.config);
+            let preferred_model_format = self.config.clone().unwrap().model_format;
             trace!("Preferred model format: {:?}", &preferred_model_format);
             
-            let preferred_resource_type = Some(ResourceType::PrunedModel);
+            let preferred_resource_type = self.config.clone().unwrap().resource_type;
             trace!("Preferred resource type: {:?}", &preferred_resource_type);
 
-            // TODO: Fix model format and resource type config parsing so these overrides are not
-            // required
             Ok(vs
                 .iter()
                 .filter(|v| v.format.is_some())
                 .find(|v| {
-                    let found_model_format = ModelFormat::from_str(v.format.clone().unwrap().as_str()).ok();
-                    let found_resource_type = ResourceType::from_str(&v.type_field).ok();
+                    let found_model_format = ModelFormat::from_str(v.format.clone().unwrap().as_str()).unwrap_or_default();
+                    let found_resource_type = ResourceType::from_str(&v.type_field).unwrap_or_default();
                     debug!("Found {:?} model of format {:?}", &found_resource_type, &found_model_format);
-                    let okay = preferred_model_format.eq(&found_model_format) && preferred_resource_type.eq(&found_resource_type);
+                    let okay = preferred_model_format.eq(&found_model_format.clone()) && preferred_resource_type.eq(&found_resource_type.clone());
                     trace!("Need to ensure {:?} is equal to {:?}", preferred_model_format, &found_model_format);
                     trace!("Need to ensure {:?} is equal to {:?}", preferred_resource_type, &found_resource_type);
                     debug!("Is {:?} okay? ({:?})({:?}) -- {} ", &v.id, &found_model_format, &found_resource_type, okay);

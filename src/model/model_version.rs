@@ -1,5 +1,4 @@
-use serde_derive::{Serialize, Deserialize};
-
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,7 +71,7 @@ pub struct Image {
     pub hash: Option<String>,
     pub meta: Option<Meta>,
     pub generation_process: Option<String>,
-    pub tags: Option<Vec<Option<serde_json::Value>>>
+    pub tags: Option<Vec<Option<serde_json::Value>>>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]

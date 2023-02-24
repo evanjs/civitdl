@@ -11,7 +11,6 @@ use tracing::{debug, error, info, trace, warn};
 mod model;
 use civitdl::Config;
 
-
 use env_logger::Env;
 
 #[derive(Parser, Debug)]
@@ -30,7 +29,6 @@ struct Args {
     #[arg(short, long, long_help = "The ID of the model version to download")]
     override_id: Option<String>,
 }
-
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
@@ -55,7 +53,6 @@ async fn main() {
         info!("Parsed IDs: {ids:?}");
     }
 
-
     let config = match envy::from_env::<Config>() {
         Ok(parsed_config) => {
             debug!("Parsed config: {:#?}", &parsed_config);
@@ -65,14 +62,23 @@ async fn main() {
             warn!(message = "Failed to parse full config. Filling in missing values with defaults ...", error =? e);
             let model_format = &dotenvy::var("model_format").unwrap_or_default();
             let resource_type = &dotenvy::var("resource_type").unwrap_or_default();
-            let stable_diffusion_base_directory = &dotenvy::var("stable_diffusion_base_directory").unwrap_or_default();
-            let stable_diffusion_fallback_directory = &dotenvy::var("stable_diffusion_fallback_directory").unwrap_or_default(); 
+            let stable_diffusion_base_directory =
+                &dotenvy::var("stable_diffusion_base_directory").unwrap_or_default();
+            let stable_diffusion_fallback_directory =
+                &dotenvy::var("stable_diffusion_fallback_directory").unwrap_or_default();
             let api_key = dotenvy::var("api_key").ok();
             let token = dotenvy::var("token").ok();
-            
+
             trace!(model_format =? &model_format, resource_type =? &resource_type, stable_diffusion_base_directory =? &stable_diffusion_base_directory, stable_diffusion_fallback_directory =? &stable_diffusion_fallback_directory, api_key =? &api_key, token =? &token);
-            
-            let conf = Config::new(api_key, token, stable_diffusion_base_directory, stable_diffusion_fallback_directory, model_format, resource_type);
+
+            let conf = Config::new(
+                api_key,
+                token,
+                stable_diffusion_base_directory,
+                stable_diffusion_fallback_directory,
+                model_format,
+                resource_type,
+            );
 
             debug!(config =? &conf);
             Some(conf)
@@ -84,7 +90,6 @@ async fn main() {
     let civit = Civit::new(config);
     let mut res = Vec::new();
     let override_id = args.override_id;
-
 
     if let Some(oid) = override_id {
         let id = ids.first().unwrap();
@@ -99,7 +104,8 @@ async fn main() {
 
         civit_client
             .download_specific_resource_for_model(model, oid)
-            .await.unwrap();
+            .await
+            .unwrap();
     } else {
         let results = join_all(
             ids.iter_mut()
@@ -107,7 +113,6 @@ async fn main() {
                     let civit_client = civit.clone();
                     let model_id = id.clone();
 
-                    
                     civit_client
                         .get_model_details(id.clone())
                         .await

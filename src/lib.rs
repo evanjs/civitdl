@@ -7,9 +7,9 @@ mod model;
 use anyhow::anyhow;
 use futures::{future::join_all, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use model::Model;
 use model::model_version::ModelVersion;
 use model::model_version::ResourceFile;
+use model::Model;
 use normpath::{self, PathExt};
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
@@ -28,31 +28,23 @@ pub struct Config {
     stable_diffusion_fallback_directory: PathBuf,
     token: Option<String>,
     model_format: ModelFormat,
-    resource_type: ResourceType
+    resource_type: ResourceType,
 }
 
-
-#[derive(AsRefStr, Debug, Serialize, Deserialize, Clone, EnumString, PartialEq)]
-#[derive(Default)]
+#[derive(AsRefStr, Debug, Serialize, Deserialize, Clone, EnumString, PartialEq, Default)]
 pub enum ResourceType {
     Model,
     #[strum(serialize = "Pruned Model")]
     #[default]
-    PrunedModel
+    PrunedModel,
 }
 
-#[derive(AsRefStr, Debug, Serialize, Deserialize, Clone, EnumString, PartialEq)]
-#[derive(Default)]
+#[derive(AsRefStr, Debug, Serialize, Deserialize, Clone, EnumString, PartialEq, Default)]
 pub enum ModelFormat {
     #[default]
     SafeTensor,
-    PickleTensor
+    PickleTensor,
 }
-
-
-
-
-
 
 fn default_stable_diffusion_fallback_directory() -> PathBuf {
     let user_dirs = directories::UserDirs::new().unwrap();
@@ -61,7 +53,6 @@ fn default_stable_diffusion_fallback_directory() -> PathBuf {
         .unwrap()
         .to_path_buf()
         .join("Stable-diffusion")
-        
 }
 
 pub fn get_config_directory() -> PathBuf {
@@ -70,7 +61,7 @@ pub fn get_config_directory() -> PathBuf {
     debug!(config_dir =? &config_dir, message = "Checking if config directory exists");
     if !config_dir.exists() {
         debug!(config_dir =? &config_dir, message =? "Attempting to create config directory");
-        
+
         let created = std::fs::create_dir_all(config_dir).ok();
         if created.is_some() {
             debug!(config_directory =? &config_dir, message="Created config directory");
@@ -94,7 +85,7 @@ impl Config {
         stable_diffusion_base_directory: &str,
         stable_diffusion_fallback_directory: &str,
         model_format: &str,
-        resource_type: &str
+        resource_type: &str,
     ) -> Self {
         Self {
             api_key,
@@ -102,7 +93,7 @@ impl Config {
             stable_diffusion_base_directory: PathBuf::from(stable_diffusion_base_directory),
             stable_diffusion_fallback_directory: PathBuf::from(stable_diffusion_fallback_directory),
             model_format: ModelFormat::from_str(model_format).unwrap_or_default(),
-            resource_type: ResourceType::from_str(resource_type).unwrap_or_default()
+            resource_type: ResourceType::from_str(resource_type).unwrap_or_default(),
         }
     }
 }
@@ -115,7 +106,7 @@ impl Default for Config {
             stable_diffusion_fallback_directory: default_stable_diffusion_fallback_directory(),
             stable_diffusion_base_directory: default_stable_diffusion_fallback_directory(),
             model_format: ModelFormat::default(),
-            resource_type: ResourceType::default()
+            resource_type: ResourceType::default(),
         }
     }
 }
@@ -154,8 +145,7 @@ impl Civit {
                 let cookie = format!(
                     "{} Domain=.civitai.com; Path=/; HttpOnly; Secure; SameSite=Lax",
                     token
-                )
-                ;
+                );
                 jar.add_cookie_str(cookie.as_str(), &url);
                 trace!("Added cookie {} to jar", cookie);
             }
@@ -190,7 +180,7 @@ impl Civit {
             tracing::info!(config =? &self.config);
             let preferred_model_format = self.config.clone().unwrap().model_format;
             trace!("Preferred model format: {:?}", &preferred_model_format);
-            
+
             let preferred_resource_type = self.config.clone().unwrap().resource_type;
             trace!("Preferred resource type: {:?}", &preferred_resource_type);
 
@@ -198,13 +188,31 @@ impl Civit {
                 .iter()
                 .filter(|v| v.format.is_some())
                 .find(|v| {
-                    let found_model_format = ModelFormat::from_str(v.format.clone().unwrap().as_str()).unwrap_or_default();
-                    let found_resource_type = ResourceType::from_str(&v.type_field).unwrap_or_default();
-                    debug!("Found {:?} model of format {:?}", &found_resource_type, &found_model_format);
-                    let okay = preferred_model_format.eq(&found_model_format) && preferred_resource_type.eq(&found_resource_type);
-                    trace!("Need to ensure {:?} is equal to {:?}", preferred_model_format, &found_model_format);
-                    trace!("Need to ensure {:?} is equal to {:?}", preferred_resource_type, &found_resource_type);
-                    debug!("Is {:?} okay? ({:?})({:?}) -- {} ", &v.id, &found_model_format, &found_resource_type, okay);
+                    let found_model_format =
+                        ModelFormat::from_str(v.format.clone().unwrap().as_str())
+                            .unwrap_or_default();
+                    let found_resource_type =
+                        ResourceType::from_str(&v.type_field).unwrap_or_default();
+                    debug!(
+                        "Found {:?} model of format {:?}",
+                        &found_resource_type, &found_model_format
+                    );
+                    let okay = preferred_model_format.eq(&found_model_format)
+                        && preferred_resource_type.eq(&found_resource_type);
+                    trace!(
+                        "Need to ensure {:?} is equal to {:?}",
+                        preferred_model_format,
+                        &found_model_format
+                    );
+                    trace!(
+                        "Need to ensure {:?} is equal to {:?}",
+                        preferred_resource_type,
+                        &found_resource_type
+                    );
+                    debug!(
+                        "Is {:?} okay? ({:?})({:?}) -- {} ",
+                        &v.id, &found_model_format, &found_resource_type, okay
+                    );
                     okay
                 })
                 .cloned())
@@ -328,9 +336,7 @@ impl Civit {
                 join_all(
                     versions
                         .iter()
-                        .map(|v| async {
-                            self.clone().download_file(v, model.clone()).await
-                        })
+                        .map(|v| async { self.clone().download_file(v, model.clone()).await })
                         .collect::<Vec<_>>(),
                 )
                 .await;
@@ -339,8 +345,11 @@ impl Civit {
         }
     }
 
-    pub async fn check_if_file_exists_and_matches_hash(self, path: PathBuf, file: ResourceFile) -> anyhow::Result<bool> {
-
+    pub async fn check_if_file_exists_and_matches_hash(
+        self,
+        path: PathBuf,
+        file: ResourceFile,
+    ) -> anyhow::Result<bool> {
         let file_exists = path.exists();
         if !file_exists {
             return Ok(false);
@@ -389,7 +398,13 @@ impl Civit {
             .stable_diffusion_base_directory
             .clone();
 
-        let alt = model_version.clone().files.unwrap().first().unwrap().clone();
+        let alt = model_version
+            .clone()
+            .files
+            .unwrap()
+            .first()
+            .unwrap()
+            .clone();
         let target_file = self
             .clone()
             .get_optimal_file_from_preferred_model_format(model_version.clone())
@@ -433,7 +448,10 @@ impl Civit {
         let final_path = model_directory.join(&filename);
         debug!("Final path: {}", final_path.to_string_lossy());
 
-        let same = self.clone().check_if_file_exists_and_matches_hash(final_path.clone(), target_file.clone()).await?;
+        let same = self
+            .clone()
+            .check_if_file_exists_and_matches_hash(final_path.clone(), target_file.clone())
+            .await?;
         if same {
             let message = format!(
                 "{:?} already exists! Not downloading...",

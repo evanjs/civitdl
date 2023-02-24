@@ -33,29 +33,25 @@ pub struct Config {
 
 
 #[derive(AsRefStr, Debug, Serialize, Deserialize, Clone, EnumString, PartialEq)]
+#[derive(Default)]
 pub enum ResourceType {
     Model,
     #[strum(serialize = "Pruned Model")]
+    #[default]
     PrunedModel
 }
 
 #[derive(AsRefStr, Debug, Serialize, Deserialize, Clone, EnumString, PartialEq)]
+#[derive(Default)]
 pub enum ModelFormat {
+    #[default]
     SafeTensor,
     PickleTensor
 }
 
-impl Default for ModelFormat {
-    fn default () -> ModelFormat {
-        ModelFormat::SafeTensor
-    }
-}
 
-impl Default for ResourceType {
-    fn default() -> ResourceType {
-        ResourceType::PrunedModel
-    }
-}
+
+
 
 
 fn default_stable_diffusion_fallback_directory() -> PathBuf {
@@ -205,7 +201,7 @@ impl Civit {
                     let found_model_format = ModelFormat::from_str(v.format.clone().unwrap().as_str()).unwrap_or_default();
                     let found_resource_type = ResourceType::from_str(&v.type_field).unwrap_or_default();
                     debug!("Found {:?} model of format {:?}", &found_resource_type, &found_model_format);
-                    let okay = preferred_model_format.eq(&found_model_format.clone()) && preferred_resource_type.eq(&found_resource_type.clone());
+                    let okay = preferred_model_format.eq(&found_model_format) && preferred_resource_type.eq(&found_resource_type);
                     trace!("Need to ensure {:?} is equal to {:?}", preferred_model_format, &found_model_format);
                     trace!("Need to ensure {:?} is equal to {:?}", preferred_resource_type, &found_resource_type);
                     debug!("Is {:?} okay? ({:?})({:?}) -- {} ", &v.id, &found_model_format, &found_resource_type, okay);

@@ -72,7 +72,7 @@ async fn main() {
             
             trace!(model_format =? &model_format, resource_type =? &resource_type, stable_diffusion_base_directory =? &stable_diffusion_base_directory, stable_diffusion_fallback_directory =? &stable_diffusion_fallback_directory, api_key =? &api_key, token =? &token);
             
-            let conf = Config::new(api_key, token, &stable_diffusion_base_directory, &stable_diffusion_fallback_directory, model_format, resource_type);
+            let conf = Config::new(api_key, token, stable_diffusion_base_directory, stable_diffusion_fallback_directory, model_format, resource_type);
 
             debug!(config =? &conf);
             Some(conf)

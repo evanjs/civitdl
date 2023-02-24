@@ -4,6 +4,7 @@ use civitdl::Civit;
 
 use clap::{arg, ArgAction, Parser};
 
+use dotenvy::dotenv;
 use futures::future::join_all;
 
 use tracing::{debug, error, info};
@@ -34,7 +35,15 @@ struct Args {
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("warn")).init();
-    dotenvy::dotenv().unwrap();
+    let config_dir = civitdl::get_config_directory();
+    info!("Config directory: {:?}", &config_dir);
+    let env_path = config_dir.clone().join(".env");
+    let config_path = config_dir.join("civitdl.ini");
+    if env_path.exists() {
+        dotenv().ok();
+    } else {
+        dotenvy::from_path(config_path).ok();
+    }
 
     let args = Args::parse();
     let mut ids = args.ids;
@@ -46,17 +55,19 @@ async fn main() {
         info!("Parsed IDs: {ids:?}");
     }
 
-    let mut config: Option<Config> = None;
 
-    match envy::from_env::<Config>() {
+    let config = match envy::from_env::<Config>() {
         Ok(parsed_config) => {
             debug!("Parsed config: {:#?}", &parsed_config);
-            config = Some(parsed_config);
+            Some(parsed_config)
         }
         Err(e) => {
-            error!(error =? e);
+            error!(message = "No config found. Using default options ...", error =? e);
+            let conf = Config::default();
+            debug!(config =? &conf);
+            Some(conf)
         }
-    }
+    };
 
     let all = args.all;
 

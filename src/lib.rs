@@ -63,6 +63,28 @@ fn default_stable_diffusion_fallback_directory() -> PathBuf {
         
 }
 
+pub fn get_config_directory() -> PathBuf {
+    let project_dirs = directories::ProjectDirs::from("io", "evanjs", "civitdl").unwrap();
+    let config_dir = project_dirs.config_dir();
+    debug!(config_dir =? &config_dir, message = "Checking if config directory exists");
+    if !config_dir.exists() {
+        debug!(config_dir =? &config_dir, message =? "Attempting to create config directory");
+        
+        let created = std::fs::create_dir_all(config_dir).ok();
+        if created.is_some() {
+            debug!(config_directory =? &config_dir, message="Created config directory");
+            config_dir.into()
+        } else {
+            let exe_dir = std::env::current_exe().unwrap().parent().unwrap().into();
+            debug!(exe_dir =? &exe_dir, message =? "Failed to find config directory.\nFalling back to executable directory");
+            exe_dir
+        }
+    } else {
+        debug!(config_dir =? &config_dir, message = "Created config directory {:?}");
+        config_dir.into()
+    }
+}
+
 impl Config {
     #[tracing::instrument(skip_all)]
     pub fn new(

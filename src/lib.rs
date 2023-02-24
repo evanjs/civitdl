@@ -37,6 +37,9 @@ pub enum ResourceType {
     #[strum(serialize = "Pruned Model")]
     #[default]
     PrunedModel,
+    #[strum(serialize = "Training Data")]
+    TrainingData,
+    Unknown
 }
 
 #[derive(AsRefStr, Debug, Serialize, Deserialize, Clone, EnumString, PartialEq, Default)]
@@ -44,6 +47,8 @@ pub enum ModelFormat {
     #[default]
     SafeTensor,
     PickleTensor,
+    Other,
+    Unknown
 }
 
 fn default_stable_diffusion_fallback_directory() -> PathBuf {
@@ -72,7 +77,7 @@ pub fn get_config_directory() -> PathBuf {
             exe_dir
         }
     } else {
-        debug!(config_dir =? &config_dir, message = "Created config directory {:?}");
+        debug!(config_dir =? &config_dir, message = "Found existing config directory");
         config_dir.into()
     }
 }
@@ -190,9 +195,9 @@ impl Civit {
                 .find(|v| {
                     let found_model_format =
                         ModelFormat::from_str(v.format.clone().unwrap().as_str())
-                            .unwrap_or_default();
+                            .unwrap_or(ModelFormat::Unknown);
                     let found_resource_type =
-                        ResourceType::from_str(&v.type_field).unwrap_or_default();
+                        ResourceType::from_str(&v.type_field).unwrap_or(ResourceType::Unknown);
                     debug!(
                         "Found {:?} model of format {:?}",
                         &found_resource_type, &found_model_format

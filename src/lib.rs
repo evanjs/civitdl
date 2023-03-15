@@ -130,6 +130,8 @@ pub enum ModelType {
     Hypernetwork,
     //#[strum(serialize = "aesthetic gradient")]
     AestheticGradient,
+    Unknown,
+    LoCon
 }
 
 #[derive(Clone, Debug)]
@@ -276,7 +278,7 @@ impl Civit {
         debug!("Attempting to determine download folder for model type: {model_type:?}");
         let leaf_dir = match model_type {
             ModelType::Model | ModelType::Checkpoint => "models/Stable-diffusion",
-            ModelType::Lora => "models/Lora",
+            ModelType::Lora | ModelType::LoCon => "models/Lora",
             ModelType::TextualInversion => "embeddings",
             ModelType::Hypernetwork => "models/hypernetworks",
             ModelType::AestheticGradient => "models/aesthetic_embeddings",

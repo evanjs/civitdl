@@ -3,7 +3,7 @@
 #![feature(unwrap_infallible)]
 
 use reqwest::{cookie::Jar, Url};
-mod model;
+pub mod model;
 use anyhow::anyhow;
 use futures::{future::join_all, StreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum::{AsRefStr, EnumString};
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
@@ -39,6 +39,8 @@ pub enum ResourceType {
     PrunedModel,
     #[strum(serialize = "Training Data")]
     TrainingData,
+    Archive,
+    Config,
     Unknown
 }
 
@@ -120,16 +122,12 @@ impl Default for Config {
 pub enum ModelType {
     #[strum(serialize = "LORA")]
     Lora,
-    //#[strum(serialize = "model")]
     Model,
-    //#[strum(serialize = "checkpoint")]
     Checkpoint,
-    //#[strum(serialize = "textual inversion")]
     TextualInversion,
-    //#[strum(serialize = "hypernetwork")]
     Hypernetwork,
-    //#[strum(serialize = "aesthetic gradient")]
     AestheticGradient,
+    Poses,
     Unknown,
     LoCon
 }
@@ -186,15 +184,17 @@ impl Civit {
         if let Some(vs) = model_version.files {
             tracing::info!(config =? &self.config);
             let preferred_model_format = self.config.clone().unwrap().model_format;
-            trace!("Preferred model format: {:?}", &preferred_model_format);
+            debug!("Preferred model format: {:?}", &preferred_model_format);
 
             let preferred_resource_type = self.config.clone().unwrap().resource_type;
-            trace!("Preferred resource type: {:?}", &preferred_resource_type);
+            debug!("Preferred resource type: {:?}", &preferred_resource_type);
+            debug!(files =? vs);
 
-            Ok(vs
+            let primary = vs
                 .iter()
                 .filter(|v| v.format.is_some())
                 .find(|v| {
+                    debug!(resource_file =? v, "Parsing model version");
                     let found_model_format =
                         ModelFormat::from_str(v.format.clone().unwrap().as_str())
                             .unwrap_or(ModelFormat::Unknown);
@@ -206,12 +206,12 @@ impl Civit {
                     );
                     let okay = preferred_model_format.eq(&found_model_format)
                         && preferred_resource_type.eq(&found_resource_type);
-                    trace!(
+                    debug!(
                         "Need to ensure {:?} is equal to {:?}",
                         preferred_model_format,
                         &found_model_format
                     );
-                    trace!(
+                    debug!(
                         "Need to ensure {:?} is equal to {:?}",
                         preferred_resource_type,
                         &found_resource_type
@@ -221,8 +221,45 @@ impl Civit {
                         &v.id, &found_model_format, &found_resource_type, okay
                     );
                     okay
-                })
-                .cloned())
+                }).cloned();
+            let alt = vs
+                .iter()
+                .filter(|v| v.format.is_some())
+                .find(|v| {
+                    let found_model_format =
+                        ModelFormat::from_str(v.format.clone().unwrap().as_str())
+                            .unwrap_or(ModelFormat::Unknown);
+                    let found_resource_type =
+                        ResourceType::from_str(&v.type_field).unwrap_or(ResourceType::Unknown);
+                    let alt = preferred_model_format.eq(&found_model_format)
+                        || preferred_resource_type.eq(&found_resource_type);
+                    debug!(
+                        "[Alt] Need to ensure {:?} is equal to {:?}",
+                        preferred_model_format,
+                        &found_model_format
+                    );
+                    debug!(
+                        "[Alt] Need to ensure {:?} is equal to {:?}",
+                        preferred_resource_type,
+                        &found_resource_type
+                    );
+                    debug!(
+                        "[Alt] Is {:?} okay? ({:?})({:?}) -- {} ",
+                        &v.id, &found_model_format, &found_resource_type, alt
+                    );
+                    alt
+                }).cloned();
+            debug!(primary =? &primary, alt =? &alt);
+            if primary.is_some() {
+                return Ok(primary)
+            } else {
+                if alt.is_some() {
+                  debug!(alt_type =? &alt);
+                  return Ok(Some(alt.unwrap_or_default()))
+                } else {
+                    Ok(Some(vs.clone().first().clone().unwrap().clone()))
+                }
+            }
         } else {
             let first = model_version.files.expect("yo wtf").first().cloned();
             match first {
@@ -260,7 +297,7 @@ impl Civit {
                     "Attempting to resolve type for type_field: {:#?}",
                     model.type_field
                 );
-                let resolved_type = ModelType::from_str(model.type_field.as_str()).unwrap();
+                let resolved_type = ModelType::from_str(model.type_field.as_str()).map_err(|e|error!(error =? e, "Failed to resolve model type")).unwrap();
                 let resolved_path = self.get_download_folder_from_model_type(path, resolved_type);
                 debug!("Resolved path: {:#?}", resolved_path);
                 Ok(resolved_path)
@@ -282,6 +319,8 @@ impl Civit {
             ModelType::TextualInversion => "embeddings",
             ModelType::Hypernetwork => "models/hypernetworks",
             ModelType::AestheticGradient => "models/aesthetic_embeddings",
+            ModelType::Poses => "models/poses",
+            ModelType::Unknown => "downloads"
         };
         trace!("Leaf dir: {:#?}", leaf_dir);
         let final_path = path.join(leaf_dir).normalize().unwrap().into_path_buf();
@@ -452,8 +491,10 @@ impl Civit {
             .replace('"', "");
         trace!("Content Disposition for {:?}: {:?}", &url, &filename);
 
+
         let final_path = model_directory.join(&filename);
         debug!("Final path: {}", final_path.to_string_lossy());
+        
 
         let same = self
             .clone()
@@ -472,17 +513,19 @@ impl Civit {
             .content_length()
             .ok_or(anyhow!("Failed to get content length from '{}'", &url))?;
 
+        let check_format = ModelFormat::from_str(&target_file.clone().format.unwrap_or_default()).unwrap_or(ModelFormat::Other);
+        let check_type = ResourceType::from_str(&target_file.clone().type_field).unwrap_or(ResourceType::Unknown);
         let pb = self.multi_progress.add(ProgressBar::new(total_size)
             .with_prefix(filename)
-            .with_message(format!("Attempting to download version {} for {model:?} (format: {}/{}) ...", model_version.id, target_file.type_field.clone(), target_file.format.clone().unwrap_or("N/A".into())))
+            .with_message(format!("Attempting to download version {} for {model:?} (format: {:?}/{:?}) ...", model_version.id, check_type, check_format))
             .with_style(ProgressStyle::default_bar()
                 .template("{msg}\n{spinner:.green} [{prefix}] [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")?
                 .progress_chars("#>-")))
             .with_finish(indicatif::ProgressFinish::WithMessage(format!(
-                        "Downloaded {} ({}/{}) to {}",
+                        "Downloaded {} ({:?}/{:?}) to {}",
                         url,
-                        target_file.type_field.clone(),
-                        target_file.format.unwrap(),
+                        check_type,
+                        check_format,
                         final_path.to_string_lossy()
             ).into()));
 

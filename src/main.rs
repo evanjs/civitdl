@@ -10,13 +10,14 @@ use futures::future::join_all;
 use tracing::{debug, error, info, trace, warn};
 mod model;
 use civitdl::Config;
+use anyhow::anyhow;
 
 use env_logger::Env;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long, long_help = "The IDs of the models to download", action=ArgAction::Set, num_args=1..)]
+    #[arg(short, long, long_help = "The IDs of the models to download", action=ArgAction::Append, num_args=1..)]
     ids: Vec<String>,
 
     #[arg(
@@ -100,14 +101,16 @@ async fn main() {
             .clone()
             .get_model_details(id.clone())
             .await
-            .unwrap_or_else(|_| panic!("Failed to get model details for {model_id}"));
+            .or({
+                Err(anyhow!(format!("Failed to get model details for model {model_id:?}")))
+            }).unwrap_or_default();
 
         civit_client
             .download_specific_resource_for_model(model, oid)
             .await
             .unwrap();
     } else {
-        let results = join_all(
+        let results: Vec<anyhow::Result<civitdl::model::Model>> = join_all(
             ids.iter_mut()
                 .map(|id| async {
                     let civit_client = civit.clone();
@@ -116,7 +119,9 @@ async fn main() {
                     civit_client
                         .get_model_details(id.clone())
                         .await
-                        .unwrap_or_else(|_| panic!("Failed to get model details for {model_id}"))
+                        .or({
+                            Err(anyhow!(format!("Failed to get model details for model {model_id:?}")))
+                        })
                 })
                 .collect::<Vec<_>>(),
         )
@@ -126,11 +131,13 @@ async fn main() {
 
         join_all(
             res.iter()
+                .map(|m|m.as_ref().ok())
+                .filter(|i|i.is_some())
+                .map(|m|m.unwrap().clone())
                 .map(|model| async {
-                    let m = model.clone();
                     let civit_client = civit.clone();
                     civit_client
-                        .download_latest_resource_for_model(m, all)
+                        .download_latest_resource_for_model(model, all)
                         .await
                 })
                 .collect::<Vec<_>>(),

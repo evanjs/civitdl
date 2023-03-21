@@ -129,7 +129,8 @@ pub enum ModelType {
     AestheticGradient,
     Poses,
     Unknown,
-    LoCon
+    LoCon,
+    Wildcards
 }
 
 #[derive(Clone, Debug)]
@@ -320,7 +321,8 @@ impl Civit {
             ModelType::Hypernetwork => "models/hypernetworks",
             ModelType::AestheticGradient => "models/aesthetic_embeddings",
             ModelType::Poses => "models/poses",
-            ModelType::Unknown => "downloads"
+            ModelType::Unknown => "downloads",
+            ModelType::Wildcards => "downloads/wildcards"
         };
         trace!("Leaf dir: {:#?}", leaf_dir);
         let final_path = path.join(leaf_dir).normalize().unwrap().into_path_buf();

@@ -209,13 +209,13 @@ impl Civit {
                         && preferred_resource_type.eq(&found_resource_type);
                     debug!(
                         "Need to ensure {:?} is equal to {:?}",
-                        preferred_model_format,
-                        &found_model_format
+                        &found_model_format,
+                        preferred_model_format
                     );
                     debug!(
                         "Need to ensure {:?} is equal to {:?}",
-                        preferred_resource_type,
-                        &found_resource_type
+                        &found_resource_type,
+                        preferred_resource_type
                     );
                     debug!(
                         "Is {:?} okay? ({:?})({:?}) -- {} ",
@@ -236,13 +236,13 @@ impl Civit {
                         || preferred_resource_type.eq(&found_resource_type);
                     debug!(
                         "[Alt] Need to ensure {:?} is equal to {:?}",
-                        preferred_model_format,
-                        &found_model_format
+                        &found_model_format,
+                        preferred_model_format
                     );
                     debug!(
                         "[Alt] Need to ensure {:?} is equal to {:?}",
-                        preferred_resource_type,
-                        &found_resource_type
+                        &found_resource_type,
+                        preferred_resource_type
                     );
                     debug!(
                         "[Alt] Is {:?} okay? ({:?})({:?}) -- {} ",

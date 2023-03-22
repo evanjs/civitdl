@@ -160,6 +160,7 @@ impl Civit {
         let client = reqwest::Client::builder()
             .cookie_store(true)
             .cookie_provider(Arc::new(jar))
+            .use_rustls_tls()
             .build()
             .unwrap();
         debug!("Constructed client: {:#?}", client);
@@ -337,10 +338,11 @@ impl Civit {
             .client
             .get(&url)
             .send()
-            .await?
+            .await
+            .inspect_err(|e| error!(error =? e, url =? url, model_id =? model_id, "Failed to fetch model details"))?
             .json::<Model>()
             .await
-            .inspect_err(|e| debug!("Failed to parse JSON from URL: {url}. Error: {e}"))
+            .inspect_err(|e| error!("Failed to parse JSON from URL: {url}. Error: {e}"))
         {
             Ok(o) => Ok(o),
             Err(e) => Err(anyhow!(e)),

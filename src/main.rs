@@ -108,7 +108,7 @@ async fn main() {
         civit_client
             .download_specific_resource_for_model(model, oid)
             .await
-            .unwrap();
+            .unwrap_or_default();
     } else {
         let results: Vec<anyhow::Result<civitdl::model::Model>> = join_all(
             ids.iter_mut()

@@ -61,11 +61,19 @@ pub struct Hashes {
     pub blake3: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum NSFW {
+    None,
+    Soft,
+    Mature,
+    X
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Image {
     pub url: String,
-    pub nsfw: bool,
+    pub nsfw: Option<NSFW>,
     pub width: i64,
     pub height: i64,
     pub hash: Option<String>,

@@ -479,15 +479,12 @@ impl Civit {
         let headers = result.headers();
         trace!("Headers: {:#?}", &headers);
 
-        let content_disposition = result
+        let content_disposition_raw = result
             .headers()
             .iter()
             .find(|(x, _)| x.as_str().eq("content-disposition"))
-            .ok_or(anyhow!("Failed to get content disposition from '{}'", &url))?
-            .1
-            .to_str()
-            .ok()
-            .unwrap();
+            .ok_or(anyhow!("Failed to get content disposition from '{}'", &url))?;
+        let content_disposition = String::from_utf8_lossy(content_disposition_raw.1.as_bytes()).to_string();
         let filename = content_disposition
             .split("filename=")
             .last()

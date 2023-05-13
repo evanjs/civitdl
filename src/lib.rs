@@ -317,7 +317,8 @@ impl Civit {
         debug!("Attempting to determine download folder for model type: {model_type:?}");
         let leaf_dir = match model_type {
             ModelType::Model | ModelType::Checkpoint => "models/Stable-diffusion",
-            ModelType::Lora | ModelType::LoCon => "models/Lora",
+            ModelType::Lora => "models/Lora",
+            ModelType::LoCon => "models/LyCORIS",
             ModelType::TextualInversion => "embeddings",
             ModelType::Hypernetwork => "models/hypernetworks",
             ModelType::AestheticGradient => "models/aesthetic_embeddings",

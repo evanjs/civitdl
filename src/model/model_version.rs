@@ -95,7 +95,7 @@ pub struct Meta {
     pub sampler: Option<String>,
     pub cfg_scale: Option<f64>,
     #[serde(rename = "Clip skip")]
-    pub clip_skip: Option<String>,
+    pub clip_skip: Option<i64>,
     pub resources: Option<Vec<Resource>>,
     #[serde(rename = "Model hash")]
     pub model_hash: Option<String>,

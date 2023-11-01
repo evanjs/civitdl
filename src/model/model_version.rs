@@ -1,5 +1,14 @@
 use serde_derive::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StringOrNumber {
+    #[serde(alias="clipSkip")]
+    String,
+    #[serde(alias="Clip skip")]
+    Number(i64)
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Model {
@@ -94,8 +103,7 @@ pub struct Meta {
     pub prompt: Option<String>,
     pub sampler: Option<String>,
     pub cfg_scale: Option<f64>,
-    #[serde(rename = "Clip skip")]
-    pub clip_skip: Option<i64>,
+    pub clip_skip: Option<StringOrNumber>,
     pub resources: Option<Vec<Resource>>,
     #[serde(rename = "Model hash")]
     pub model_hash: Option<String>,
